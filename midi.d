@@ -1,13 +1,24 @@
 import std.stdio;
 import std.conv;
 
+import fluid;
+
 int main(string[] args) {
+    
     MidiData data;
 
     if (args.length > 1) {
         data = MidiData.parse_midi_from_file(File(args[1]));
         data.dump();
     }
+
+    /*
+    Fluid f = new Fluid("/usr/share/soundfonts/FluidR3_GM2-2.sf2");
+
+    f.test();
+
+    readln();
+    */
     return 0;
 }
 
@@ -251,7 +262,7 @@ class MidiTrack {
     }
 }
 
-abstract class MidiEvent {
+abstract class MidiEvent : FluidSequenceable {
     uint delta_time;
 
     //        enum MidiEvent function(MidiReadQueue,ubyte)[ubyte] event_ctors = [
@@ -307,9 +318,10 @@ abstract class MidiChannelEvent : MidiEvent {
     }
 
     override string toString() {
-        return "Event:Channel:"~name~"<@"~to!string(delta_time)~">("~
+        return "Event:Channel:"~name~"<+"~to!string(delta_time)~">("~
             to!string(channel)~", "~to!string(param1)~", "~to!string(param2)~")";
     }
+
 }
 
 class MidiNoteOffEvent : MidiChannelEvent {
@@ -318,34 +330,65 @@ class MidiNoteOffEvent : MidiChannelEvent {
     this(ubyte channel, ubyte param1, ubyte param2, uint t) {
         super(channel, param1, param2, t);
     }
+
+    void sequence(Fluid fl) {
+        auto evt = fl.create_event(false);
+        
+        fluid_event_noteoff(evt, channel, param1);
+
+        fl.send(evt, delta_time);
+
+        delete_fluid_event(evt);
+    }
 }
+
 class MidiNoteOnEvent : MidiChannelEvent {
     override @property string name() { return "NoteOn"; };
 
     this(ubyte channel, ubyte param1, ubyte param2, uint t) {
         super(channel, param1, param2, t);
     }
+
+    void sequence(Fluid fl) {
+        auto evt_note = fl.create_event(false);
+        auto evt_cb = fl.create_event(true);
+        
+        fluid_event_noteon(evt_note, channel, param1, param2);
+        fluid_event_timer(evt_cb, null);
+
+        fl.send(evt_note, delta_time);
+        fl.send(evt_cb, 0);
+
+        delete_fluid_event(evt_note);
+        delete_fluid_event(evt_cb);
+    }
 }
+
 class MidiNoteAftertouchEvent : MidiChannelEvent {
     override @property string name() { return "NoteAftertouch"; }
 
     this(ubyte channel, ubyte param1, ubyte param2, uint t) {
         super(channel, param1, param2, t);
     }
+    void sequence(Fluid fl) { }
 }
+
 class MidiControllerEvent : MidiChannelEvent {
     override @property string name() { return "Controller"; }
 
     this(ubyte channel, ubyte param1, ubyte param2, uint t) {
         super(channel, param1, param2, t);
     }
+    void sequence(Fluid fl) { }
 }
+
 class MidiProgramChangeEvent : MidiChannelEvent {
     override @property string name() { return "ProgramChange"; }
 
     this(ubyte channel, ubyte param1, ubyte param2, uint t) {
         super(channel, param1, param2, t);
     }
+    void sequence(Fluid fl) { }
 }
 class MidiChannelAftertouchEvent : MidiChannelEvent {
     override @property string name() { return "ChannelAftertouch"; }
@@ -353,6 +396,7 @@ class MidiChannelAftertouchEvent : MidiChannelEvent {
     this(ubyte channel, ubyte param1, ubyte param2, uint t) {
         super(channel, param1, param2, t);
     }
+    void sequence(Fluid fl) { }
 }
 class MidiPitchBendEvent : MidiChannelEvent {
     override @property string name() { return "PitchBend"; }
@@ -360,6 +404,7 @@ class MidiPitchBendEvent : MidiChannelEvent {
     this(ubyte channel, ubyte param1, ubyte param2, uint t) {
         super(channel, param1, param2, t);
     }
+    void sequence(Fluid fl) { }
 }
 
 abstract class MidiMetaEvent : MidiEvent {
@@ -391,6 +436,7 @@ abstract class MidiMetaEvent : MidiEvent {
     this(uint t) {
         delta_time = t;
     }
+    void sequence(Fluid fl) { }
 }
 
 class MidiSequenceNumberEvent : MidiMetaEvent {
@@ -404,7 +450,7 @@ class MidiSequenceNumberEvent : MidiMetaEvent {
     }
 
     override string toString() {
-        return "Event:Meta:"~name~"<@"~to!string(delta_time)~">("~to!string(number)~")";
+        return "Event:Meta:"~name~"<+"~to!string(delta_time)~">("~to!string(number)~")";
     }
 }
 
@@ -418,7 +464,7 @@ abstract class MidiMetaASCIIEvent : MidiMetaEvent {
     }
 
     override string toString() {
-        return "Event:Meta:"~name~"<@"~to!string(delta_time)~">("~text~")";
+        return "Event:Meta:"~name~"<+"~to!string(delta_time)~">("~text~")";
     }
 }
 
@@ -497,7 +543,7 @@ class MidiChannelPrefixEvent : MidiMetaEvent {
     }
 
     override string toString() {
-        return "Event:Meta:"~name~"<@"~to!string(delta_time)~">("~to!string(channel)~")";
+        return "Event:Meta:"~name~"<+"~to!string(delta_time)~">("~to!string(channel)~")";
     }
 }
 
@@ -510,7 +556,7 @@ class MidiEndOfTrackEvent : MidiMetaEvent {
     }
 
     override string toString() {
-        return "Event:Meta:"~name~"<@>"~to!string(delta_time)~">()";
+        return "Event:Meta:"~name~"<+"~to!string(delta_time)~">()";
     }
 
 }
@@ -535,7 +581,7 @@ class MidiSetTempoEvent : MidiMetaEvent {
     }
 
     override string toString() {
-        return "Event:Meta:"~name~"<@"~to!string(delta_time)~">("~to!string(microseconds_per_quarter)~")";
+        return "Event:Meta:"~name~"<+"~to!string(delta_time)~">("~to!string(microseconds_per_quarter)~")";
     }
 
 }
@@ -566,7 +612,7 @@ class MidiSMPTEOffsetEvent : MidiMetaEvent {
     }
 
     override string toString() {
-        return "Event:Meta:"~name~"<@"~to!string(delta_time)~">("~to!string(frame_rate)~", "~
+        return "Event:Meta:"~name~"<+"~to!string(delta_time)~">("~to!string(frame_rate)~", "~
             to!string(hours)~", "~to!string(minutes)~", "~
             to!string(seconds)~", "~to!string(frames)~", "~
             to!string(subframes)~")";
@@ -592,7 +638,7 @@ class MidiTimeSignatureEvent : MidiMetaEvent {
     }
 
     override string toString() {
-        return "Event:Meta:"~name~"<@"~to!string(delta_time)~">("~to!string(numerator)~"/"~
+        return "Event:Meta:"~name~"<+"~to!string(delta_time)~">("~to!string(numerator)~"/"~
             to!string(denominator)~", "~to!string(metronome)~", "~
             to!string(thirtyseconds)~")";
     }
@@ -613,7 +659,7 @@ class MidiKeySignatureEvent : MidiMetaEvent {
     }
 
     override string toString() {
-        return "Event:Meta:"~name~"<@"~to!string(delta_time)~">("~to!string(key)~", "~to!string(scale)~")";
+        return "Event:Meta:"~name~"<+"~to!string(delta_time)~">("~to!string(key)~", "~to!string(scale)~")";
     }
 }
 
@@ -629,7 +675,7 @@ class MidiSequencerSpecificEvent : MidiMetaEvent {
     }
 
     override string toString() {
-        return "Event:Meta:"~name~"<@"~to!string(delta_time)~">("~to!string(data)~")";
+        return "Event:Meta:"~name~"<+"~to!string(delta_time)~">("~to!string(data)~")";
     }
 }
 
@@ -659,6 +705,8 @@ class MidiUnimplementedSysExEvent : MidiSysExEvent {
     }
 
     override string toString() {
-        return "Event:SysEx:"~name~"<@"~to!string(delta_time)~">("~to!string(type)~")";
+        return "Event:SysEx:"~name~"<+"~to!string(delta_time)~">("~to!string(type)~")";
     }
+    
+    void sequence(Fluid fl) { }
 }
