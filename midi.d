@@ -307,7 +307,8 @@ abstract class MidiChannelEvent : MidiEvent {
     }
 
     override string toString() {
-        return "Event:Channel:"~name~"<@"~to!string(delta_time)~">("~to!string(channel)~", "~to!string(param1)~", "~to!string(param2)~")";
+        return "Event:Channel:"~name~"<@"~to!string(delta_time)~">("~
+            to!string(channel)~", "~to!string(param1)~", "~to!string(param2)~")";
     }
 }
 
