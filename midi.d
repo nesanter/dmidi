@@ -194,10 +194,14 @@ class MidiReadQueue {
             bytes ~= read_bytes(1);
         }
 
+        writeln(bytes);
+
         uint x = 0;
-        foreach_reverse (b; bytes) {
-            x = (x << 7) | b;
+        foreach (b; bytes) {
+            x = ((x & 127) << 7) | b;
         }
+
+        writeln("x = ", x);
 
         return x;
     }
