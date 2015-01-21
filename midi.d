@@ -173,14 +173,10 @@ class MidiReadQueue {
             bytes ~= read_bytes(1);
         }
 
-        writeln(bytes);
-
         uint x = 0;
         foreach (b; bytes) {
             x = ((x & 127) << 7) | b;
         }
-
-        writeln("x = ", x);
 
         return x;
     }
@@ -1060,6 +1056,145 @@ class MidiTrackIter {
      */
     void reset() {
         pos = 0;
+    }
+}
+
+/**
+ * Together with MidiTrackIter allows synchronizing
+ * a MidiEvent with a timestamp
+ */
+abstract class MidiEventBuffer {
+    /**
+     * Create a new buffer.
+     * If tracks is an empty array (the default)
+     * all tracks are used to create the buffer
+     */
+    static MidiEventBuffer create(MidiData data, ulong[] tracks = []) {
+        if (tracks.length == 1) {
+            return new MidiEventBufferSingle(data.header, data.tracks[tracks[0]]);
+        } else if (tracks.length == 0) {
+//            return new MidiEventBufferMulti(data.header, data.tracks);
+            return null;
+        } else {
+            /*
+            MidiTrack[] a;
+            foreach (tr; tracks)
+                a ~= data.tracks[tr];
+            
+            return new MidiEventBufferMulti(data.header, a);
+            */
+            return null;
+        }
+    }
+
+    /**
+     * Advance the buffer n_frames
+     */
+    void advance(uint n_frames);
+
+    /**
+     * Get the next event from the buffer. Repeated calls
+     * will continue to return events until the buffer
+     * is empty (ie another call to advance() is needed)
+     *
+     * Returns: event or null if no events have occured
+     */
+    MidiEvent pop_next();
+
+    /// Rewind the buffer
+    void rewind();
+
+    /**
+     * The sample rate used to scale
+     * the delta_time of outgoing events
+     */
+    @property uint sample_rate();
+    @property void sample_rate(uint f_s); /// ditto
+
+    /**
+     * The accumulated number of frames
+     */
+    @property uint offset();
+
+    /**
+     * Test whether all events have been popped
+     */
+    @property bool empty();
+}
+
+/**
+ * Subclasses of MidiEventBuffer
+ */
+class MidiEventBufferSingle : MidiEventBuffer {
+    private MidiTrackIter iter;
+    private ulong index;
+
+    enum default_ms_q = 500;
+
+    private const uint t_q;
+    private uint ms_q;
+    private uint scale;
+    private uint _sample_rate;
+
+    private uint _offset;
+
+    this(MidiHeader header, MidiTrack track) {
+        iter = track.create_iter();
+
+        index = 0;
+        ms_q = default_ms_q;
+        _offset = 0;
+
+        if (header.division_type == MidiHeader.DivisionType.PER_QUARTER)
+            t_q = header.ticks_per_quarter;
+        else
+            throw new MidiException("Unhandled header division type");
+    }
+
+    override void advance(uint n_frames) {
+        index += n_frames;
+    }
+
+    override MidiEvent pop_next() {
+        if (iter.empty)
+            return null;
+
+        uint dt = iter.front.delta_time * scale;
+
+        if (dt < index) {
+//            _offset += dt;
+            _offset = dt;
+            index -= dt;
+
+            return iter.pop();
+        }
+
+        return null;
+    }
+
+    override void rewind() {
+        index = 0;
+        ms_q = default_ms_q;
+        _offset = 0;
+
+        iter.reset();
+    }
+
+    override @property uint sample_rate() {
+        return _sample_rate;
+    }
+
+    override @property void sample_rate(uint f_s) {
+        _sample_rate = f_s;
+        scale = (f_s * ms_q) / (1000 * t_q);
+    }
+
+    override @property uint offset() {
+        return _offset;
+    }
+
+    override @property bool empty() {
+        return iter.empty;
     }
 }
 
