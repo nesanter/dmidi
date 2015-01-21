@@ -1,6 +1,6 @@
 import std.stdio;
 
-import midi;
+import midi.parser;
 import jack.header;
 
 __gshared jack_client_t* client;

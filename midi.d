@@ -7,7 +7,7 @@
  * Authors: Noah Santer, nesanter@knox.edu
  */
 
-module midi;
+module midi.parser;
 
 import std.stdio;
 import std.conv;
