@@ -356,6 +356,13 @@ class MidiTrack {
     override string toString() {
         return "Chunk:Track(n_events = " ~ to!string(events.length) ~ ")";
     }
+
+    /**
+     * Create an iterator for this track
+     */
+    MidiTrackIter create_iter() {
+        return new MidiTrackIter(this);
+    }
 }
 
 /**
@@ -968,14 +975,18 @@ class MidiSequencerSpecificEvent : MidiMetaEvent {
  */
 abstract class MidiSysExEvent : MidiEvent {
 
+    override @property ubyte type() { return 0xF0; }
+    ubyte subtype;
+
     static MidiSysExEvent parse(MidiReadQueue queue, ubyte type, uint t) {
         uint length = queue.read_variable();
 
-        return new MidiUnimplementedSysExEvent(type, t);
+        return new MidiDefaultSysExEvent(type, t);
     }
 
-    this(uint t) {
+    this(uint t, ubyte sub) {
         delta_time = t;
+
     }
 
     ///
@@ -992,19 +1003,63 @@ abstract class MidiSysExEvent : MidiEvent {
 /**
  * Subclasses of MidiSysExEvent
  */
-class MidiUnimplementedSysExEvent : MidiSysExEvent {
-
+class MidiDefaultSysExEvent : MidiSysExEvent {
     override @property string name() { return "Unimplemented"; }
 
-    ubyte type;
-
-    this(ubyte type, uint t) {
-        this.type = type;
-        
-        super(t);
+    this(ubyte sub, uint t) {
+        super(t, sub);
     }
 
     override string toString() {
         return "Event:SysEx:"~name~"<+"~to!string(delta_time)~">("~to!string(type)~")";
     }
 }
+
+/**
+ * Allows iteration through events in a MidiTrack
+ */
+class MidiTrackIter {
+    MidiTrack track;
+    ulong pos;
+
+    ///
+    this(MidiTrack track) {
+        this.track = track;
+        pos = 0;
+    }
+
+    /**
+     * Return the next event and advance the iterator
+     */
+    MidiEvent pop() {
+        if (empty)
+            return null;
+        else
+            return track.events[pos++];
+    }
+
+    /**
+     * Test if the iterator has reached the end of the track
+     */
+    @property bool empty() {
+        return (pos == track.events.length);
+    }
+    
+    /**
+     * Return the next event in the iterator without advancing
+     */
+    @property MidiEvent front() {
+        if (empty)
+            return null;
+        else
+            return track.events[pos];
+    }
+
+    /**
+     * Reset the iterator to the beginning of the track
+     */
+    void reset() {
+        pos = 0;
+    }
+}
+
