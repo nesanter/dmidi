@@ -79,9 +79,10 @@ abstract class Sequencer {
         }
 
         /**
-         * Load MIDI data for playback
+         * Load MIDI data for playback.  If tracks is given,
+         * _load only the _tracks specified.
          */
-        static void load(MidiData data) {
+        static void load(MidiData data, ulong[] tracks = []) {
             while (!lock()) {}
             evbuf = MidiEventBuffer.create(data);
             if (client)
