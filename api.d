@@ -12,6 +12,7 @@ version (PRINT_OUTGOING_EVENTS) {
 import std.stdio;
 import std.string;
 import core.atomic;
+import core.thread;
 
 import midi.parser;
 import jack.header;
@@ -72,6 +73,7 @@ abstract class Sequencer {
         static void rewind() {
             while (!lock()) {}
             evbuf.rewind();
+            position = 0;
             unlock();
         }
 
@@ -120,10 +122,41 @@ abstract class Sequencer {
         }
 
         /**
-         * Wait for playback to end
+         * Wait for playback to end.  If a callback is given,
+         * call it with the value of note_index whenever
+         * a note is played (more or less.)  If block is false,
+         * another thread will be created to run the callback
+         * and the call to wait() will not block.  An optional
+         * function to be called when playback stops can be given.
          */
         static void wait() {
             while (playing) {}
+        }
+
+        /// ditto
+        static void wait(void function(ulong) callback,
+                         bool block = true,
+                         void function() finish_callback = null) {
+            auto dg = () {
+                ulong pold = 0;
+                while (playing) {
+                    while (pold < position) {
+                        callback(pold++);
+                    }
+                }
+                while (pold < position) {
+                    callback(pold++);
+                }
+                if (finish_callback)
+                    finish_callback();
+            };
+
+            if (block) {
+                dg();
+            } else {
+                Thread cbthread = new Thread(dg);
+                cbthread.start();
+            }
         }
 
         /**
@@ -165,7 +198,7 @@ private {
                     auto ev = Sequencer.evbuf.pop_next();
                     
                     if (ev) {
-                        if (ev.type == 0x90) {
+                        if (ev.type == 0x90 && (cast(MidiNoteOnEvent)ev).param2 > 0) {
                             Sequencer.position++;
                         }
 
