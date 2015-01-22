@@ -582,7 +582,7 @@ abstract class MidiMetaEvent : MidiEvent {
 
     uint length;
 
-    override @property ubyte type() { return 0xF0; }
+    override @property ubyte type() { return 0xFF; }
 
     @property ubyte subtype();
 
@@ -803,11 +803,13 @@ class MidiSetTempoEvent : MidiMetaEvent {
 
     this(MidiReadQueue queue, uint l, uint t) {
         ubyte[] raw = queue.read_bytes(3);
-        ubyte[] rev = [0];
+        ubyte[] rev = [];
 
         foreach_reverse (b; raw) {
             rev ~= b;
         }
+
+        rev ~= [0];
 
         microseconds_per_quarter = *cast(uint*)rev.ptr;
 
@@ -1080,18 +1082,38 @@ abstract class MidiEventBuffer {
         if (tracks.length == 1) {
             return new MidiEventBufferSingle(data.header, data.tracks[tracks[0]]);
         } else if (tracks.length == 0) {
-//            return new MidiEventBufferMulti(data.header, data.tracks);
-            return null;
+            return new MidiEventBufferMulti(data.header, data.tracks);
         } else {
-            /*
             MidiTrack[] a;
             foreach (tr; tracks)
                 a ~= data.tracks[tr];
             
             return new MidiEventBufferMulti(data.header, a);
-            */
-            return null;
         }
+    }
+
+    private {
+        enum default_us_q = 500000;
+
+        const uint t_q;
+        uint us_q;
+        uint scale;
+        uint _sample_rate;
+
+        uint _offset;
+
+        ulong skip_count;
+        bool function(MidiEvent ev) skip_filter;
+        bool fast_forward;
+    }
+
+    this(MidiHeader header) {
+        us_q = default_us_q;
+
+        if (header.division_type == MidiHeader.DivisionType.PER_QUARTER)
+            t_q = header.ticks_per_quarter;
+        else
+            throw new MidiException("Unhandled header division type");
     }
 
     /**
@@ -1115,13 +1137,53 @@ abstract class MidiEventBuffer {
      * The sample rate used to scale
      * the delta_time of outgoing events
      */
-    @property uint sample_rate();
-    @property void sample_rate(uint f_s); /// ditto
+    @property uint sample_rate() {
+        return _sample_rate;
+    }
+
+    /// ditto
+    @property void sample_rate(uint f_s) {
+        _sample_rate = f_s;
+        calculate_scale();
+    }
+
+    private void calculate_scale() {
+        real rscale = (cast(real)_sample_rate * cast(real)us_q / 1000) / (1000 * cast(real)t_q);
+        scale = cast(uint)rscale;
+
+        version (WARN_INEXACT_TEMPO) {
+            if (cast(real)scale <> rscale) {
+                stderr.writeln("Warning: inexact tempo (",rscale," <> ",scale);
+            }
+        }
+    }
+
+    /**
+     * The current tempo of the track in
+     * beats per minute
+     */
+    @property uint b_m() {
+        return 60000000 / us_q;
+    }
+
+    /**
+     * The current tempo of the track in
+     * microseconds per quarter note
+     */
+    @property uint tempo() {
+        return us_q;
+    }
+    @property void tempo(uint t) {
+        us_q = t;
+        calculate_scale();
+    }
 
     /**
      * The accumulated number of frames
      */
-    @property uint offset();
+    @property uint offset() {
+        return _offset;
+    }
 
     /**
      * Test whether all events have been popped.
@@ -1148,7 +1210,14 @@ abstract class MidiEventBuffer {
      * fast_forward is true, all events until the first event
      * matching the filter will have a time offset of zero.
      */
-    void skip(ulong n, bool function(MidiEvent ev) filter = null, bool fast_forward = false);
+    void skip(ulong n, bool function(MidiEvent ev) filter = null, bool fast_forward = false) {
+        skip_count = n;
+        if (filter is null) {
+            skip_filter = (MidiEvent ev) { return true; };
+        }
+        skip_filter = filter;
+        this.fast_forward = fast_forward;
+    }
 }
 
 /**
@@ -1156,34 +1225,13 @@ abstract class MidiEventBuffer {
  */
 class MidiEventBufferSingle : MidiEventBuffer {
     private MidiTrackIter iter;
+
     private uint index, base_index;
-
-    enum default_ms_q = 500;
-
-    private const uint t_q;
-    private uint ms_q;
-    private uint scale;
-    private uint _sample_rate;
-
-    private uint _offset;
-
-    private bool function(MidiEvent ev)[] filters;
-
-    private ulong skip_count;
-    private bool function(MidiEvent ev) skip_filter;
-    private bool fast_forward;
 
     this(MidiHeader header, MidiTrack track) {
         iter = track.create_iter();
 
-        index = 0;
-        base_index = 0;
-        ms_q = default_ms_q;
-
-        if (header.division_type == MidiHeader.DivisionType.PER_QUARTER)
-            t_q = header.ticks_per_quarter;
-        else
-            throw new MidiException("Unhandled header division type");
+        super(header);
     }
 
     override void advance(uint n_frames) {
@@ -1231,60 +1279,116 @@ class MidiEventBufferSingle : MidiEventBuffer {
     override void rewind() {
         base_index = 0;
         index = 0;
-        ms_q = default_ms_q;
+        us_q = default_us_q;
         _offset = 0;
 
         iter.reset();
     }
 
-    override @property uint sample_rate() {
-        return _sample_rate;
-    }
-
-    override @property void sample_rate(uint f_s) {
-        _sample_rate = f_s;
-        scale = (f_s * ms_q) / (1000 * t_q);
-    }
-
-    override @property uint offset() {
-        return _offset;
-    }
-
     override @property bool empty() {
         return iter.empty;
     }
+}
 
-    /*
-    override void push_filter(bool function(MidiEvent ev) filter) {
-        filters ~= filter;
+class MidiEventBufferMulti : MidiEventBuffer {
+    private MidiTrackIter[] iters;
+
+    private uint[] indices, base_indices, offsets;
+
+    this(MidiHeader header, MidiTrack[] tracks) {
+        foreach (track; tracks)
+            iters ~= track.create_iter();
+
+        indices = new uint[](tracks.length);
+        base_indices = new uint[](tracks.length);
+        offsets = new uint[](tracks.length);
+
+        super(header);
     }
 
-    override void pop_filter() {
-        filters = filters[0..$-1];
+    override void advance(uint n_frames) {
+        foreach (i; 0 .. iters.length) {
+            base_indices[i] = indices[i];
+            indices[i] += n_frames;
+            offsets[i] = 0;
+        }
+        _offset = 0;
     }
-    */
 
-    override void skip(ulong n, bool function(MidiEvent ev) filter = null, bool fast_forward = false) {
-        /*
+    override MidiEvent pop_next() {
         while (true) {
-            if (filter is null || filter(iter.front)) {
-                if (n == 0)
-                    break;
-                n--;
+            MidiTrackIter next;
+            int n;
+            ulong i;
+
+            foreach (j, iter; iters) {
+                if (iter.empty)
+                    continue;
+
+                int n2 = iter.front.delta_time * scale - base_indices[j];
+
+                if (next is null || n2 < n) {
+                    n = n2;
+                    next = iter;
+                    i = j;
+                }
             }
 
-            if (iter.empty)
-                throw new MidiBufferException("Buffer exhausted during skip");
+            if (next is null)
+                return null;
 
-            iter.pop();
+            uint dt;
+
+            if (fast_forward)
+                dt = 0;
+            else
+                dt = next.front.delta_time * scale;
+
+            if (dt < indices[i]) {
+                offsets[i] += dt - base_indices[i];
+                _offset = offsets[i];
+                base_indices[i] = 0;
+                indices[i] -= dt;
+
+                MidiEvent ev = next.pop();
+
+                if (skip_count == 0) {
+                    return ev;
+                } else if (skip_filter(ev)) {
+                    skip_count--;
+                    if (skip_count == 0) {
+                        fast_forward = false;
+                        return ev;
+                    }
+                } else {
+                    return ev;
+                }
+            } else {
+                return null;
+            }
         }
-        */
-        skip_count = n;
-        if (filter is null) {
-            skip_filter = (MidiEvent ev) { return true; };
+    }
+
+    override void rewind() {
+        us_q = default_us_q;
+
+        foreach (iter; iters)
+            iter.reset();
+
+        foreach (i; 0 .. iters.length) {
+            indices[i] = 0;
+            base_indices[i] = 0;
+            offsets[i] = 0;
         }
-        skip_filter = filter;
-        this.fast_forward = fast_forward;
+        _offset = 0;
+    }
+    
+    override @property bool empty() {
+        foreach (iter; iters) {
+            if (!iter.empty)
+                return false;
+        }
+        return true;
     }
 }
 

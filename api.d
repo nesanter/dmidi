@@ -83,7 +83,7 @@ abstract class Sequencer {
          */
         static void load(MidiData data) {
             while (!lock()) {}
-            evbuf = MidiEventBuffer.create(data, [1]);
+            evbuf = MidiEventBuffer.create(data);
             if (client)
                 evbuf.sample_rate = jack_get_sample_rate(client);
             unlock();
@@ -209,8 +209,15 @@ private {
                             Sequencer.position++;
                         }
 
+                        if (ev.type == 0xFF) {
+                            auto mev = cast(MidiMetaEvent)ev;
+                            if (mev.subtype == 0x51) {
+                                Sequencer.evbuf.tempo = (cast(MidiSetTempoEvent)mev).microseconds_per_quarter;
+                            }
+                        }
+
                         version (PRINT_OUTGOING_EVENTS) {
-                            writeln(ev, " (offset = ", Sequencer.evbuf.offset);
+                            stderr.writeln(ev, " (offset = ", Sequencer.evbuf.offset, ")");
                         }
 
                         ubyte* buf = cast(ubyte*)jack_midi_event_reserve(port_buf, Sequencer.evbuf.offset, ev.size);
@@ -218,7 +225,9 @@ private {
                         if (buf) {
                             ev.buffer(buf);
                         } else {
-                            writeln("oops");
+                            version (WARN_CANNOT_BUFFER) {
+                                stderr.writeln("Warning: failed to reserve space in JACK buffer for outgoing event");
+                            }
                             break;
                         }
                     } else {
