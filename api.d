@@ -6,6 +6,10 @@
 
 module midi.api;
 
+version (PRINT_OUTGOING_EVENTS) {
+    pragma(msg, "Warning: PRINT_OUTGOING_EVENTS conflicts with the realtime nature of JACK");
+}
+import std.stdio;
 import std.string;
 import core.atomic;
 
@@ -18,12 +22,17 @@ class JackException : Exception {
     }
 }
 
+/**
+ * Sequencer provides an abstract interface to the MIDI and JACK
+ * libraries.
+ */
 abstract class Sequencer {
     protected {
         __gshared static bool playing;
         __gshared static MidiEventBuffer evbuf;
-        __gshared jack_client_t* client;
+        __gshared static jack_client_t* client;
         __gshared static jack_port_t* output_port;
+        __gshared static ulong position;
 
         static bool lock() {
             return cas(&lock_playing, false, true);
@@ -39,24 +48,36 @@ abstract class Sequencer {
     }
 
     public {
+        /**
+         * Play the loaded MIDI data
+         */
         static void play() {
             while (!lock()) {}
             playing = true;
             unlock();
         }
 
+        /**
+         * Pause playback
+         */
         static void pause() {
             while (!lock()) {}
             playing = false;
             unlock();
         }
 
+        /**
+         * Rewind the data to the beginning
+         */
         static void rewind() {
             while (!lock()) {}
             evbuf.rewind();
             unlock();
         }
 
+        /**
+         * Load MIDI data for playback
+         */
         static void load(MidiData data) {
             while (!lock()) {}
             evbuf = MidiEventBuffer.create(data, [1]);
@@ -65,6 +86,9 @@ abstract class Sequencer {
             unlock();
         }
 
+        /**
+         * Activate the JACK subsystem
+         */
         static void activate(string appname = "dmidi") {
            client = jack_client_open(toStringz(appname), JackOptions.JackNullOption, null);
 
@@ -88,12 +112,42 @@ abstract class Sequencer {
            }
         }
 
+        /**
+         * Deactivate the JACK subsystem
+         */
         static void deactivate() {
             jack_client_close(client);
         }
 
+        /**
+         * Wait for playback to end
+         */
         static void wait() {
             while (playing) {}
+        }
+
+        /**
+         * The index of the last note played
+         */
+        static @property ulong note_index() {
+            return position;
+        }
+
+        /**
+         * Seek to a specific note index
+         */
+        static void seek(ulong note) {
+            while (!lock()) {}
+
+            evbuf.rewind();
+
+            auto fn = (MidiEvent ev) { return (ev.type == 0x90 && (cast(MidiNoteOnEvent)ev).param2 > 0); };
+
+            evbuf.skip(note, fn, true);
+
+            position = note;
+
+            unlock();
         }
     }
 }
@@ -111,11 +165,20 @@ private {
                     auto ev = Sequencer.evbuf.pop_next();
                     
                     if (ev) {
+                        if (ev.type == 0x90) {
+                            Sequencer.position++;
+                        }
+
+                        version (PRINT_OUTGOING_EVENTS) {
+                            writeln(ev, " (offset = ", Sequencer.evbuf.offset);
+                        }
+
                         ubyte* buf = cast(ubyte*)jack_midi_event_reserve(port_buf, Sequencer.evbuf.offset, ev.size);
 
                         if (buf) {
                             ev.buffer(buf);
                         } else {
+                            writeln("oops");
                             break;
                         }
                     } else {
