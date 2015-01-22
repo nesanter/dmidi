@@ -196,9 +196,10 @@ abstract class Sequencer {
 private {
     extern (C) int jack_process(jack_nframes_t n_frames, void* arg) {
         if (Sequencer.lock()) {
+            void* port_buf = jack_port_get_buffer(Sequencer.output_port, n_frames);
+            jack_midi_clear_buffer(port_buf);
+
             if (Sequencer.playing && Sequencer.evbuf !is null) {
-                void* port_buf = jack_port_get_buffer(Sequencer.output_port, n_frames);
-                jack_midi_clear_buffer(port_buf);
 
                 Sequencer.evbuf.advance(n_frames);
 
