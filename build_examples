@@ -2,6 +2,12 @@
 
 COMPILER=dmd
 
+FLAGS=
+
+if [ "$1" == "--print-outgoing-events" ] ; then
+    FLAGS="$FLAGS -version=PRINT_OUTGOING_EVENTS"
+fi
+
 for FILE in $(find examples -type f) ; do
-    $COMPILER $FILE api.d midi.d jack/jack_header.d -L-ljack
+    $COMPILER $FILE api.d midi.d jack/jack_header.d -L-ljack $FLAGS
 done
