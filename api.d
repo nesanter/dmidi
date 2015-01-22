@@ -46,6 +46,7 @@ abstract class Sequencer {
 
     private {
         static shared bool lock_playing;
+        static ThreadGroup cb_threads;
     }
 
     public {
@@ -154,9 +155,15 @@ abstract class Sequencer {
             if (block) {
                 dg();
             } else {
-                Thread cbthread = new Thread(dg);
-                cbthread.start();
+                cb_threads.create(dg);
             }
+        }
+
+        /**
+         * Wait for all callback threads to complete.
+         */
+        static void join_callbacks() {
+            cb_threads.joinAll();
         }
 
         /**
