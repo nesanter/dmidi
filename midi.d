@@ -653,11 +653,11 @@ class MidiSequenceNumberEvent : MidiMetaEvent {
     }
 
     override void buffer(ubyte* buffer) {
-        buffer[0] = type;
-        buffer[1] = subtype;
+        *buffer++ = type;
+        *buffer++ = subtype;
         buffer = MidiReadQueue.write_variable(buffer, length);
-        buffer[0] = (number & 0xFF00) >> 8;
-        buffer[1] = (number & 0x00FF);
+        *buffer++ = (number & 0xFF00) >> 8;
+        *buffer++ = (number & 0x00FF);
     }
 }
 
@@ -676,11 +676,11 @@ abstract class MidiMetaASCIIEvent : MidiMetaEvent {
     }
 
     override void buffer(ubyte* buffer) {
-        buffer[0] = type;
-        buffer[1] = subtype;
+        *buffer++ = type;
+        *buffer++ = subtype;
         buffer = MidiReadQueue.write_variable(buffer, length);
-        foreach (n; 0 .. text.length) {
-            buffer[n] = text[n];
+        foreach (c; text) {
+            *buffer++ = c;
         }
     }
 
@@ -781,10 +781,10 @@ class MidiChannelPrefixEvent : MidiMetaEvent {
     }
 
     override void buffer(ubyte* buffer) {
-        buffer[0] = type;
-        buffer[1] = subtype;
+        *buffer++ = type;
+        *buffer++ = subtype;
         buffer = MidiReadQueue.write_variable(buffer, length);
-        buffer[2] = channel;
+        *buffer++ = channel;
     }
 }
 
@@ -803,8 +803,8 @@ class MidiEndOfTrackEvent : MidiMetaEvent {
     }
 
     override void buffer(ubyte* buffer) {
-        buffer[0] = type;
-        buffer[1] = subtype;
+        *buffer++ = type;
+        *buffer++ = subtype;
         buffer = MidiReadQueue.write_variable(buffer, length);
     }
 }
@@ -837,12 +837,12 @@ class MidiSetTempoEvent : MidiMetaEvent {
     }
 
     override void buffer(ubyte* buffer) {
-        buffer[0] = type;
-        buffer[1] = subtype;
+        *buffer++ = type;
+        *buffer++ = subtype;
         buffer = MidiReadQueue.write_variable(buffer, length);
-        buffer[0] = microseconds_per_quarter & 0xFF;
-        buffer[1] = (microseconds_per_quarter & 0xFF00) >> 8;
-        buffer[2] = (microseconds_per_quarter & 0xFF0000) >> 16;
+        *buffer++ = microseconds_per_quarter & 0xFF;
+        *buffer++ = (microseconds_per_quarter & 0xFF00) >> 8;
+        *buffer++ = (microseconds_per_quarter & 0xFF0000) >> 16;
     }
 }
 
@@ -882,14 +882,14 @@ class MidiSMPTEOffsetEvent : MidiMetaEvent {
     }
 
     override void buffer(ubyte* buffer) {
-        buffer[0] = type;
-        buffer[1] = subtype;
+        *buffer++ = type;
+        *buffer++ = subtype;
         buffer = MidiReadQueue.write_variable(buffer, length);
-        buffer[0] = ((frame_rate & 0x3) << 6) | hours;
-        buffer[1] = minutes;
-        buffer[2] = seconds;
-        buffer[3] = frames;
-        buffer[4] = subframes;
+        *buffer++ = ((frame_rate & 0x3) << 6) | hours;
+        *buffer++ = minutes;
+        *buffer++ = seconds;
+        *buffer++ = frames;
+        *buffer++ = subframes;
     }
 }
 
@@ -921,13 +921,13 @@ class MidiTimeSignatureEvent : MidiMetaEvent {
     }
 
     override void buffer(ubyte* buffer) {
-        buffer[0] = type;
-        buffer[1] = subtype;
+        *buffer++ = type;
+        *buffer++ = subtype;
         buffer = MidiReadQueue.write_variable(buffer, length);
-        buffer[0] = numerator;
-        buffer[1] = denominator;
-        buffer[2] = metronome;
-        buffer[3] = thirtyseconds;
+        *buffer++ = numerator;
+        *buffer++ = denominator;
+        *buffer++ = metronome;
+        *buffer++ = thirtyseconds;
     }
 }
 
@@ -953,11 +953,11 @@ class MidiKeySignatureEvent : MidiMetaEvent {
     }
 
     override void buffer(ubyte* buffer) {
-        buffer[0] = type;
-        buffer[1] = subtype;
+        *buffer++ = type;
+        *buffer++ = subtype;
         buffer = MidiReadQueue.write_variable(buffer, length);
-        buffer[0] = key;
-        buffer[1] = scale;
+        *buffer++ = key;
+        *buffer++ = scale;
     }
 }
 
@@ -980,11 +980,11 @@ class MidiSequencerSpecificEvent : MidiMetaEvent {
     }
 
     override void buffer(ubyte* buffer) {
-        buffer[0] = type;
-        buffer[1] = subtype;
+        *buffer = type;
+        *buffer = subtype;
         buffer = MidiReadQueue.write_variable(buffer, length);
-        foreach (n; 0 .. data.length) {
-            buffer[n] = data[n];
+        foreach (b; data) {
+            *buffer++ = b;
         }
     }
 }
