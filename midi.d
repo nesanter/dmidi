@@ -272,11 +272,11 @@ class MidiData {
     /**
      * Print a textual representation of the MIDI data
      */
-    void dump() {
+    void dump(bool raw_events = false) {
         writeln(header);
         foreach (track; tracks) {
             writeln(track);
-            track.dump();
+            track.dump(raw_events);
         }
     }
 }
@@ -349,9 +349,13 @@ class MidiTrack {
     /**
      * Print a textual representation of the track data
      */
-    void dump() {
+    void dump(bool raw_events) {
         foreach (e; events) {
-            writeln(e);
+            if (raw_events) {
+                writeln(e, " ", e.raw);
+            } else {
+                writeln(e);
+            }
         }
     }
 
@@ -414,6 +418,18 @@ abstract class MidiEvent {
      * Write MIDI data for this event into a buffer
      */
     void buffer(ubyte* buffer);
+
+    /**
+     * The raw MIDI data of this event
+     *
+     * Note: Consider using buffer() directly instead, as this
+     * simply creates an array and then calls buffer to fill it.
+     */
+    @property ubyte[] raw() {
+        ubyte[] arr = new ubyte[](size);
+        buffer(arr.ptr);
+        return arr;
+    }
 }
 
 /**
