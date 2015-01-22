@@ -1,0 +1,7 @@
+#!/bin/bash
+
+COMPILER=dmd
+
+for FILE in $(find examples -type f) ; do
+    $COMPILER $FILE api.d midi.d jack/jack_header.d -L-ljack
+done

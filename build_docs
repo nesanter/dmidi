@@ -1,0 +1,5 @@
+#!/bin/bash
+
+COMPILER=dmd
+
+$COMPILER -o- -Dddoc midi.d api.d jack/jack_header.d
