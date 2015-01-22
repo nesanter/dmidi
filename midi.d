@@ -1142,7 +1142,7 @@ abstract class MidiEventBuffer {
      * If fast_forward is true, all events processed while is
      * greater than zero have a time offset of zero.
      *
-     * Note: Only ``n - 1`` events are actually skipped, playback
+     * Note: Only `n - 1` events are actually skipped, playback
      * returns to normal beginning with the nth event.  This means
      * that if n is one, no events will be skipped, but if
      * fast_forward is true, all events until the first event
