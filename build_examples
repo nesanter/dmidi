@@ -4,9 +4,14 @@ COMPILER=dmd
 
 FLAGS=
 
-if [ "$1" == "--print-outgoing-events" ] ; then
-    FLAGS="$FLAGS -version=PRINT_OUTGOING_EVENTS"
-fi
+while [ $# -gt 0 ] ; do
+    if [ "$1" == "--print-outgoing-events" ] ; then
+        FLAGS="$FLAGS -version=PRINT_OUTGOING_EVENTS"
+    elif [ "$1" == "--warn-cannot-buffer" ] ; then
+        FLAGS="$FLAGS -version=WARN_CANNOT_BUFFER"
+    fi
+    shift 1
+done
 
 for FILE in $(find examples -type f) ; do
     $COMPILER $FILE api.d midi.d jack/jack_header.d -L-ljack $FLAGS
